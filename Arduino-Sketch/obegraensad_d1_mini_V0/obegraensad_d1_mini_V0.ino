@@ -12,8 +12,8 @@
 #include <ESP8266WiFi.h>
 
  
-#define STASSID "SSID"
-#define STAPSK  "PASS"
+#define STASSID "PopoSchütteln"
+#define STAPSK  "RegenbogenFurtzi"
  
 
 #define P_EN D5  // ORANGE
@@ -26,7 +26,7 @@
 
 // SET YOUR TIMEZONE HERE
 #define MY_NTP_SERVER "pool.ntp.org" // set the best fitting NTP server (pool) for your location
-#define MY_TZ "CET-1CEST,M3.5.0/02,M10.5.0/03" // https://github.com/nayarsystems/posix_tz_db/blob/master/zones.csv
+#define MY_TZ "EST5EDT,M3.2.0,M11.1.0" // https://github.com/nayarsystems/posix_tz_db/blob/master/zones.csv
  
 
 long     mil;
@@ -265,7 +265,6 @@ void p_clear()
 // SCAN DISPLAY, output Bytes to Serial
 void p_scan()
 {
-    
     digitalWrite(P_EN,255);    
     uint8_t w=0;
     uint8_t w2=0;
@@ -283,7 +282,8 @@ void p_scan()
             digitalWrite(_pLatch, LOW);
          }
       }  
-    digitalWrite(P_EN,0);    
+    digitalWrite(P_EN,0); 
+    analogWrite(P_EN, brightness);   
 }
 
 // SET a  Pixel in Panel Buffer, calculate position from LUT
@@ -338,8 +338,6 @@ const char* getTimeString(void) {
   //configTime(((MY_TIMEZ) * 3600), (DST_OFFSET * 3600), "pool.ntp.org", "time.nist.gov", "time.windows.com");
   configTime(MY_TZ, MY_NTP_SERVER); // --> Here is the IMPORTANT ONE LINER needed in your sketch!
 
- 
-
   Serial.print("Waiting for NTP time sync: ");
   time_t now = time(nullptr);   // Secs since 01.01.1970 (when uninitialized starts with (8 * 3600 = 28800)
   while (now < 8 * 3600 * 2) {  // Wait for realistic value
@@ -361,7 +359,6 @@ void set_clock_from_tm() {
            minute = tm.tm_min;   
            hour   = tm.tm_hour;  
  
-         
 }
 
 
@@ -425,30 +422,63 @@ void loop() {
   {
     mil = millis();
     // PRINT THE TIME
- 
-    p_printChar(2,0,(hour/10) +48);
-    p_printChar(9,0,(hour % 10) +48);
-    p_printChar(2,9,(minute/10) +48);
-    p_printChar(9,9,(minute%10) +48);
-    p_scan(); // refreshes display
+    // p_printChar(2,0,(hour/10) +48);
+    // p_printChar(9,0,(hour % 10) +48);
+    // p_printChar(2,9,(minute/10) +48);
+    // p_printChar(9,9,(minute%10) +48);
 
-    // JEDE MINUTE
+    // p_printChar(2,0,'A');
+    // p_printChar(9,0,'T');
+    // p_printChar(2,9,'E');
+    // p_printChar(9,9,'Y');
+
+    // every second
     sec ++;
-    // every minute set the time
+    // every second set the time
     if (sec>60) {
         sec = 0;
         set_clock_from_tm() ;
         set_clock();
       }
-       Serial.printf("Current time: %s\n", getTimeString());
+       //Serial.printf("Current time: %s\n", getTimeString());
   }
   
-  // TASTE
+  // if the button is pushed, adjust the display brightness
   if (digitalRead(P_KEY)==0) {
-    brightness+=50; if(brightness>200) brightness =0;
-    analogWrite(P_EN, brightness); // full brightness
+    brightness += 32; if(brightness>250l[];'') brightness = 0;
+    analogWrite(P_EN, brightness); // full br
+    ;
+    ightness
     delay(500);
    }
   
- 
+  // receive serial data
+  if (Serial.available() > 0) {
+    String receivedData = Serial.readStringUntil('\n');
+    //Serial.println("Received: " + receivedData);
+    // check whether the data is 256 characters long and only contains 0s and 1s
+    if (receivedData.length() > 256) {
+      Serial.println("Data received");
+      for (int i = 0; i < 256; i++) { 
+        if (receivedData[i] == '0') {
+          p_buf[i] = 0;
+        } else if (receivedData[i] == '1') {
+          p_buf[i] = 255;
+        } 
+      }
+    }else {
+      Serial.println("Data received length: " + receivedData.length());
+    }
+
+        //p_printChar(0,0,receivedData[0]);
+  }
+
+
+  // receive a 16x16 matrix via serial and set the display
+  //if (Serial.available() > 0) {
+    // for (int i = 0; i < 256; i++) {
+    //   p_buf[i] = Serial.read();
+    // }
+
+  p_scan(); // refreshes display
 }
