@@ -29,13 +29,16 @@
 #define MY_TZ "EST5EDT,M3.2.0,M11.1.0" // https://github.com/nayarsystems/posix_tz_db/blob/master/zones.csv
  
 
-long     mil;
+long     mil; // milliseconds since last clock update
 int      brightness=100;
 uint8_t  sec;
 uint8_t  minute;
 uint8_t  hour;
+uint8_t  second;
 time_t   now;                         // this is the epoch
 tm       tm;
+
+long     milSerialReceived = 0;
 
 #define TT 5                          // delay for digital IO
 
@@ -243,14 +246,12 @@ int lut[16][16] = {
  
 void p_init(int p_latch, int p_clock, int p_data)//, int bitDepth, int numPanels)
 {
- 
     _pLatch = p_latch;
     _pClock = p_clock;
     _pData = p_data;
     pinMode(_pLatch, OUTPUT);
     pinMode(_pClock, OUTPUT);
     pinMode(_pData, OUTPUT);
- 
   }
 
 
@@ -268,7 +269,7 @@ void p_scan()
     digitalWrite(P_EN,255);    
     uint8_t w=0;
     uint8_t w2=0;
-     for (int i = 0; i< 256 ; i++)  {
+     for (int i=0; i<256; i++)  {
         digitalWrite(_pData, 1 & p_buf[w++]); // make count faster
         digitalWrite(_pClock, HIGH);
         delayMicroseconds(TT);
@@ -358,6 +359,7 @@ void set_clock_from_tm() {
            // update time from struct
            minute = tm.tm_min;   
            hour   = tm.tm_hour;  
+           second = tm.tm_sec;
  
 }
 
@@ -382,8 +384,6 @@ pinMode(P_EN, OUTPUT);
   
   Serial.begin(74880);
 
-  
-  
   pinMode(P_KEY, INPUT_PULLUP);
    
   analogWrite(P_EN, brightness); // full brightness
@@ -418,67 +418,61 @@ pinMode(P_EN, OUTPUT);
 void loop() {
 
   // JEDE SEKUNDE
-  if (millis()>mil+1000)
+  if (millis()>mil+1000 && millis()>milSerialReceived+10000)
   {
     mil = millis();
+
     // PRINT THE TIME
-    // p_printChar(2,0,(hour/10) +48);
-    // p_printChar(9,0,(hour % 10) +48);
-    // p_printChar(2,9,(minute/10) +48);
-    // p_printChar(9,9,(minute%10) +48);
+    for (int i=0; i<256; i++) p_buf[i] = 0x00;
+    p_printChar(2,0,(hour/10) +48);
+    p_printChar(9,0,(hour % 10) +48);
+    p_printChar(2,9,(minute/10) +48);
+    p_printChar(9,9,(minute%10) +48);
 
-    // p_printChar(2,0,'A');
-    // p_printChar(9,0,'T');
-    // p_printChar(2,9,'E');
-    // p_printChar(9,9,'Y');
-
-    // every second
+    // count seconds
     sec ++;
-    // every second set the time
+    // every minute set the time
     if (sec>60) {
-        sec = 0;
-        set_clock_from_tm() ;
-        set_clock();
-      }
+      sec = 0;
+      set_clock_from_tm() ;
+      set_clock();
+    }
        //Serial.printf("Current time: %s\n", getTimeString());
+       //Serial.printf(".");
   }
   
   // if the button is pushed, adjust the display brightness
   if (digitalRead(P_KEY)==0) {
-    brightness += 32; if(brightness>250l[];'') brightness = 0;
-    analogWrite(P_EN, brightness); // full br
-    ;
-    ightness
+    brightness += 40; if(brightness>200) brightness = 40;
+    analogWrite(P_EN, brightness); // full brightness
     delay(500);
    }
-  
+
   // receive serial data
   if (Serial.available() > 0) {
     String receivedData = Serial.readStringUntil('\n');
-    //Serial.println("Received: " + receivedData);
+    //Serial.println("Received: %s" + receivedData);
     // check whether the data is 256 characters long and only contains 0s and 1s
-    if (receivedData.length() > 256) {
-      Serial.println("Data received");
-      for (int i = 0; i < 256; i++) { 
-        if (receivedData[i] == '0') {
-          p_buf[i] = 0;
-        } else if (receivedData[i] == '1') {
-          p_buf[i] = 255;
-        } 
+    if (receivedData.length() >= 256) {
+      int i = 0;
+      for (int x = 0; x < 16; x++) {
+        for (int y = 0; y < 16; y++) { 
+          if (receivedData[i] == '0') {
+            p_drawPixel(y, x, 0x00);
+            //p_buf[i] = 0;
+          } else if (receivedData[i] == '1') {
+            p_drawPixel(y, x, 0xff);
+            //p_buf[i] = 255;
+          } 
+          i++;
+        }
       }
-    }else {
-      Serial.println("Data received length: " + receivedData.length());
+      //Serial.println("bytes: " + String(receivedData.length()));
+      Serial.println(".");
+
+      milSerialReceived = millis();
     }
-
-        //p_printChar(0,0,receivedData[0]);
   }
-
-
-  // receive a 16x16 matrix via serial and set the display
-  //if (Serial.available() > 0) {
-    // for (int i = 0; i < 256; i++) {
-    //   p_buf[i] = Serial.read();
-    // }
 
   p_scan(); // refreshes display
 }
