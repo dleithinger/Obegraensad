@@ -1,4 +1,4 @@
-![GitHub Logo](http://www.heise.de/make/icons/make_logo.png)
+copied from Make Magazine code: ![GitHub Logo](http://www.heise.de/make/icons/make_logo.png)
 
 Maker Media GmbH
 *** 
