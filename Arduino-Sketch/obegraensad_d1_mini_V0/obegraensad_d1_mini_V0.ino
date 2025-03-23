@@ -30,13 +30,15 @@
  
 
 long     mil; // milliseconds since last clock update
-int      brightness=100;
+int      brightness = 50;
 uint8_t  sec;
 uint8_t  minute;
 uint8_t  hour;
 uint8_t  second;
 time_t   now;                         // this is the epoch
 tm       tm;
+
+const int sensorPin = A0; // Pin connected to the sensor
 
 long     milSerialReceived = 0;
 
@@ -382,7 +384,7 @@ pinMode(P_EN, OUTPUT);
   
   p_init(P_CLA, P_CLK, P_DI);
   
-  Serial.begin(74880);
+  Serial.begin(115200);
 
   pinMode(P_KEY, INPUT_PULLUP);
    
@@ -442,33 +444,34 @@ void loop() {
   }
   
   // if the button is pushed, adjust the display brightness
-  if (digitalRead(P_KEY)==0) {
-    brightness += 40; if(brightness>200) brightness = 40;
-    analogWrite(P_EN, brightness); // full brightness
-    delay(500);
-   }
+  // if (digitalRead(P_KEY)==0) {
+  //   brightness += 40; if(brightness>200) brightness = 40;
+  //   analogWrite(P_EN, brightness); // full brightness
+  //   delay(500);
+  //  }
 
   // receive serial data
   if (Serial.available() > 0) {
     String receivedData = Serial.readStringUntil('\n');
     //Serial.println("Received: %s" + receivedData);
-    // check whether the data is 256 characters long and only contains 0s and 1s
     if (receivedData.length() >= 256) {
       int i = 0;
       for (int x = 0; x < 16; x++) {
         for (int y = 0; y < 16; y++) { 
           if (receivedData[i] == '0') {
             p_drawPixel(y, x, 0x00);
-            //p_buf[i] = 0;
           } else if (receivedData[i] == '1') {
             p_drawPixel(y, x, 0xff);
-            //p_buf[i] = 255;
           } 
           i++;
         }
       }
-      //Serial.println("bytes: " + String(receivedData.length()));
-      Serial.println(".");
+    
+      int sensorValue = analogRead(sensorPin); // Read the analog value from the sensor
+      Serial.print("S");
+      Serial.println(sensorValue); // Print the sensor value to the Serial Monitor
+      
+      p_drawPixel(map(sensorValue, 210, 1024, 0, 15), 0, 0xff);
 
       milSerialReceived = millis();
     }
