@@ -10,18 +10,20 @@
 #include <Arduino.h>
 #include <pgmspace.h>
 #include <ESP8266WiFi.h>
+#include <Encoder.h>
+#include "PressureCurve.h"
 
- 
-#define STASSID "PopoSchütteln"
+#define STASSID "PopoSchütteln_IoT"
 #define STAPSK  "RegenbogenFurtzi"
- 
 
 #define P_EN D5  // ORANGE
-#define P_DI D6  // YELLO
+#define P_DI D6  // YELLOw
 #define P_CLK D7 // BLUE
-#define P_CLA D8 // LILA
+#define P_CLA D8 // PURPLE
 
-#define P_KEY D4 // ROT
+#define VIBRATION_MOTOR D1 // vibration motor output
+
+#define PSI_MULTIPLIER 0.211; // calibrated PSI constant for our pressure sensor. In the future, we should be able to calibrate and change that interactively
 
 
 // SET YOUR TIMEZONE HERE
@@ -31,16 +33,39 @@
 
 long     mil; // milliseconds since last clock update
 int      brightness = 50;
-uint8_t  sec;
-uint8_t  minute;
-uint8_t  hour;
-uint8_t  second;
+uint8_t  sec = 0;
+uint8_t  minute = 0;
+uint8_t  hour = 0;
+uint8_t  second = 0;
 time_t   now;                         // this is the epoch
 tm       tm;
 
-const int sensorPin = A0; // Pin connected to the sensor
+// Running Average for Sensor Readings
+const int numReadings = 10;  // Number of readings to average
+int readings[numReadings];   // Array to store readings
+int readIndex = 0;           // Index for current reading
+int total = 0;               // Running total
+int runningAveragePressure = 0;     // Calculated average
 
-long     milSerialReceived = 0;
+const int sensorPin = A0; // Pin connected to the pressure sensor
+int sensedPressureRaw = 0; // sensed pressure
+int sensedPressurePSI = 0; // sensed pressure
+int buttonPressed = 0;
+
+// Define rotary encorder pins
+const int clkPin = D2;
+const int dtPin = D3;
+const int swPin = D4;
+
+Encoder myEncoder(clkPin, dtPin); // Create encoder object
+
+long     milSerialReceived = 0; // time stamp for when the last serial message was received
+
+PressureCurve myPressureCurve; // stores the pressure profile
+
+bool vibrationState = LOW;    // Track the vibration motor state
+unsigned long previousMillis = 0; // store previous milliseconds
+const long onDuration = 100;  // Duration in milliseconds
 
 #define TT 5                          // delay for digital IO
 
@@ -370,48 +395,49 @@ void set_clock_from_tm() {
 // --------------------------------------------------------------------------
 // ----------------------SETUP ----------------------------------------------
 // --------------------------------------------------------------------------
-
-
-
-
 void setup() {
 
-//  vars_init();
-pinMode(P_EN, OUTPUT);
+  //  vars_init();
+  pinMode(P_EN, OUTPUT);
   pinMode(P_CLK, OUTPUT);
   pinMode(P_CLA, OUTPUT);
   pinMode(P_DI, OUTPUT);
-  
+
   p_init(P_CLA, P_CLK, P_DI);
-  
+
   Serial.begin(115200);
 
-  pinMode(P_KEY, INPUT_PULLUP);
-   
+  pinMode(VIBRATION_MOTOR, OUTPUT); // set the vibration motor pin
+    
   analogWrite(P_EN, brightness); // full brightness
   p_clear();
   p_scan();
+    
+  pinMode(swPin, INPUT_PULLUP);
   
-  
+  // start network
+  //WiFi.mode(WIFI_STA);
+  //WiFi.begin(STASSID, STAPSK);
 
-// start network
-  WiFi.mode(WIFI_STA);
-  WiFi.begin(STASSID, STAPSK);
-
-   while (WiFi.status() != WL_CONNECTED) {
-    delay(500);
-    Serial.print(".");
-  }
+  // while (WiFi.status() != WL_CONNECTED) {
+  //   delay(500);
+  //   Serial.print(".");
+  // }
  
-   //if you get here you have connected to the WiFi   
-   Serial.println("Wifi connected!");
-   // Sync clock
-   set_clock();
-   set_clock_from_tm() ;
+  // //if you get here you have connected to the WiFi   
+  // Serial.println("Wifi connected!");
+  // // Sync clock
+  // set_clock();
+  // set_clock_from_tm() ;
    
+  // Initialize the runnning average array to 0
+  for (int i = 0; i < numReadings; i++) {
+    readings[i] = 0;
+  }
+
+  myPressureCurve.calculateDefaultPressureCurve();
+  myPressureCurve.startExtraction(millis());
 }
-
-
 
 // --------------------------------------------------------------------------
 // ---------------------- LOOP ----------------------------------------------
@@ -419,28 +445,36 @@ pinMode(P_EN, OUTPUT);
 
 void loop() {
 
-  // JEDE SEKUNDE
+  // Reset the display
+  //for (int i=0; i<256; i++) p_buf[i] = 0x00;
+
+  // update with this once a second if we have not received any serial data for 10 sec
   if (millis()>mil+1000 && millis()>milSerialReceived+10000)
   {
     mil = millis();
 
+    // Reset the display
+    //for (int i=0; i<256; i++) p_buf[i] = 0x00;
+
     // PRINT THE TIME
-    for (int i=0; i<256; i++) p_buf[i] = 0x00;
-    p_printChar(2,0,(hour/10) +48);
-    p_printChar(9,0,(hour % 10) +48);
-    p_printChar(2,9,(minute/10) +48);
-    p_printChar(9,9,(minute%10) +48);
+    //  p_printChar(2,1,(hour/10) +48);
+    //  p_printChar(9,1,(hour % 10) +48);
+    //  p_printChar(2,9,(minute/10) +48);
+    //  p_printChar(9,9,(minute%10) +48);
 
     // count seconds
-    sec ++;
-    // every minute set the time
-    if (sec>60) {
-      sec = 0;
-      set_clock_from_tm() ;
-      set_clock();
-    }
-       //Serial.printf("Current time: %s\n", getTimeString());
-       //Serial.printf(".");
+    //sec ++;
+
+    // every 10 seconds set the time
+    // if (sec>10) {
+    //   sec = 0;
+    //   set_clock_from_tm() ;
+    //   set_clock();
+    // }
+
+    // send over serial for debugging
+    //Serial.printf("Current time: %s\n", getTimeString());
+    //Serial.printf(".");
   }
   
   // if the button is pushed, adjust the display brightness
@@ -450,7 +484,7 @@ void loop() {
   //   delay(500);
   //  }
 
-  // receive serial data
+  // receive display over serial and draw it.
   if (Serial.available() > 0) {
     String receivedData = Serial.readStringUntil('\n');
     //Serial.println("Received: %s" + receivedData);
@@ -466,15 +500,94 @@ void loop() {
           i++;
         }
       }
-    
-      int sensorValue = analogRead(sensorPin); // Read the analog value from the sensor
-      Serial.print("S");
-      Serial.println(sensorValue); // Print the sensor value to the Serial Monitor
-      
-      p_drawPixel(map(sensorValue, 210, 1024, 0, 15), 0, 0xff);
 
       milSerialReceived = millis();
     }
+  }
+
+  // read the sensor values and send them over serial to the connected computer
+  sensedPressureRaw = analogRead(sensorPin); // Read the analog value from the pressure sensor
+  sensedPressurePSI = (sensedPressureRaw - 100) * PSI_MULTIPLIER;
+
+  long encoderPosition = myEncoder.read(); // read the rotary encoder
+  if (digitalRead(swPin) == LOW) { // read the rotary encoder button
+    buttonPressed = 1;
+  } else {
+    buttonPressed = 0;
+  }
+  String serialMessage = "D,"+String(sensedPressurePSI)+","+String(encoderPosition)+","+String(buttonPressed);
+  Serial.println(serialMessage);
+
+  // Subtract the oldest reading from the total
+  total = total - readings[readIndex];
+  // Store the new reading in the array
+  readings[readIndex] = sensedPressurePSI;
+  // Add the new reading to the total             
+  total = total + readings[readIndex];
+  // Move to the next position in the array
+  readIndex = readIndex + 1;
+  // Wrap around if at the end of the array
+  if (readIndex >= numReadings) {
+    readIndex = 0;
+  }
+  // Calculate the average
+  runningAveragePressure = total / numReadings;
+
+
+  // draw pressure as a single pixel at the top 
+  //for (int i=0; i<16; i++) p_drawPixel(i, 0, 0x00); // reset row
+  //p_drawPixel(pixelValue, 0, 0xff); // draw pressure pixel
+  
+  // clear the screen
+  for (int i=0; i<256; i++) p_buf[i] = 0x00;
+
+  // Pressure sensor calculations: constrain and map running average to good range for the display
+  int pixelPressureValue = constrain(runningAveragePressure, 0, 170);
+  pixelPressureValue = map(pixelPressureValue, 0, 170, 0, 15);
+    for (int x=7; x<9; x++){
+      for (int y=15-pixelPressureValue; y<16; y++) {
+        p_drawPixel(x, y, 0xff); // draw pressure pixels
+      }
+    }
+
+    // loop the target pressure curve. this will change when we hook up a button to start it
+    if(myPressureCurve.isExtractionFinished(millis())){
+      myPressureCurve.startExtraction(millis());
+    }
+  // draw target pressure curve (pressure profile)
+  for (int x=0; x<7; x++){
+    // draw frames starting 6 seconds before before
+    int targetPressure = myPressureCurve.getPressurePoint(millis() - 6000 + (x*1000)); // show the last 6 seconds
+    targetPressure = constrain(targetPressure, 0, 170);
+    targetPressure = map(targetPressure, 0, 170, 0, 15);
+    p_drawPixel(x, 15 - targetPressure, 0xff); // draw pressure pixel
+
+    // draw frames for 6 seconds after
+    targetPressure = myPressureCurve.getPressurePoint(millis() + (x*1000)); // show the next 6 seconds
+    targetPressure = constrain(targetPressure, 0, 170);
+    targetPressure = map(targetPressure, 0, 170, 0, 15);
+    p_drawPixel(9 + x, 15 - targetPressure, 0xff); // draw pressure pixel
+  }
+
+  // turn on the vibration motor if the barista presses the lever too hard
+   if (runningAveragePressure - myPressureCurve.getPressurePoint(millis()) > 10) {
+    Serial.println("tick");
+    digitalWrite(VIBRATION_MOTOR, HIGH);
+
+    // Check if the LED should be turned on
+    // if (!vibrationState) {
+    //   digitalWrite(VIBRATION_MOTOR, HIGH);  // Turn on LED
+    //   vibrationState = HIGH;
+    //   previousMillis = millis();   // Record the time
+    // }
+
+    // // Check if 100ms has passed since LED was turned on
+    // if (vibrationState && (millis() - previousMillis >= onDuration)) {
+    //   digitalWrite(VIBRATION_MOTOR, LOW);  // Turn off LED
+    //   vibrationState = LOW;
+    // }
+  } else {
+    digitalWrite(VIBRATION_MOTOR, LOW);
   }
 
   p_scan(); // refreshes display
