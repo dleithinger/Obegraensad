@@ -15,9 +15,9 @@ void PressureCurve::calculatePressureCurve(int pressureKeyframes[3000][2], int n
 }
 
 // need to make this better later. right now, it just creates a reasonably good enough pressure curve. 
-void PressureCurve::calculateDefaultPressureCurve(int id = 0) {
+void PressureCurve::calculateDefaultPressureCurve(int id) {
 
-if (id == 0) {}
+if (id == 0) {
   // populate the pressure data array
   for (int i = 0; i < _extractionLength; i++) {
     if (i < 5 * _frameRate) { // 5 sec

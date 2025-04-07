@@ -30,6 +30,7 @@
 #define MY_NTP_SERVER "pool.ntp.org" // set the best fitting NTP server (pool) for your location
 #define MY_TZ "EST5EDT,M3.2.0,M11.1.0" // https://github.com/nayarsystems/posix_tz_db/blob/master/zones.csv
  
+#define MAX_PSI 120
 
 long     mil; // milliseconds since last clock update
 int      brightness = 50;
@@ -542,8 +543,8 @@ void loop() {
   for (int i=0; i<256; i++) p_buf[i] = 0x00;
 
   // Pressure sensor calculations: constrain and map running average to good range for the display
-  int pixelPressureValue = constrain(runningAveragePressure, 0, 170);
-  pixelPressureValue = map(pixelPressureValue, 0, 170, 0, 15);
+  int pixelPressureValue = constrain(runningAveragePressure, 0, MAX_PSI);
+  pixelPressureValue = map(pixelPressureValue, 0, MAX_PSI, 0, 15);
     for (int x=7; x<9; x++){
       for (int y=15-pixelPressureValue; y<16; y++) {
         p_drawPixel(x, y, 0xff); // draw pressure pixels
@@ -558,14 +559,14 @@ void loop() {
   for (int x=0; x<7; x++){
     // draw frames starting 6 seconds before before
     int targetPressure = myPressureCurve.getPressurePoint(millis() - 6000 + (x*1000)); // show the last 6 seconds
-    targetPressure = constrain(targetPressure, 0, 170);
-    targetPressure = map(targetPressure, 0, 170, 0, 15);
+    targetPressure = constrain(targetPressure, 0, MAX_PSI);
+    targetPressure = map(targetPressure, 0, MAX_PSI, 0, 15);
     p_drawPixel(x, 15 - targetPressure, 0xff); // draw pressure pixel
 
     // draw frames for 6 seconds after
     targetPressure = myPressureCurve.getPressurePoint(millis() + (x*1000)); // show the next 6 seconds
-    targetPressure = constrain(targetPressure, 0, 170);
-    targetPressure = map(targetPressure, 0, 170, 0, 15);
+    targetPressure = constrain(targetPressure, 0, MAX_PSI);
+    targetPressure = map(targetPressure, 0, MAX_PSI, 0, 15);
     p_drawPixel(9 + x, 15 - targetPressure, 0xff); // draw pressure pixel
   }
 
